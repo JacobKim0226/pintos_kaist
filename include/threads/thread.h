@@ -30,7 +30,7 @@ typedef int tid_t;
 #define PRI_MAX 63                      /* Highest priority. */
 
 #define ORI_PRI_DEFAULT -1              /* priority가 될 수 없는 값. ori_priority의 초기값으로 사용됨 */
-#define PRE_DEFAULF -99999
+#define PRE_DEFAULT -99999
 
 /* A kernel thread or user process.
  *

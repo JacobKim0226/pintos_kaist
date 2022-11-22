@@ -8,11 +8,14 @@
 #include "threads/flags.h"
 #include "intrinsic.h"
 #include "threads/init.h"
+#include "filesys/filesys.h"
 
 #include <stdlib.h>
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
+/* Project 2 User Memory Access 추가 */
+void check_address(void *addr);
 
 /* System call.
  *
@@ -29,42 +32,46 @@ void syscall_handler (struct intr_frame *);
 
 #define SYSCALL_CNT 25
 
-struct arguments {
-    uint64_t syscall_num;
-    uint64_t arg1, arg2, arg3, arg4, arg5, arg6;
-};
+#define F_RAX  f->R.rax
+#define F_ARG1  f->R.rdi
+#define F_ARG2  f->R.rsi
+#define F_ARG2  f->R.rdx
+#define F_ARG3  f->R.r10
+#define F_ARG4  f->R.r8
+#define F_ARG5  f->R.rd9
+
 
 struct system_call {
     uint64_t syscall_num;
-    void (*function) (struct arguments *args);
+    void (*function) (struct intr_frame *f);
 };
 
 
-void halt_handler(struct arguments *args);
-void exit_handler(struct arguments *args);
-void fork_handler(struct arguments *args);
-void exec_handler(struct arguments *args);
-void wait_handler(struct arguments *args);
-void create_handler(struct arguments *args);
-void remove_handler(struct arguments *args);
-void open_handler(struct arguments *args);
-void filesize_handler(struct arguments *args);
-void read_handler(struct arguments *args);
-void write_handler(struct arguments *args);
-void seek_handler(struct arguments *args);
-void tell_handler(struct arguments *args);
-void close_handler(struct arguments *args);
-void mmap_handler(struct arguments *args);
-void mnumap_handler(struct arguments *args);
-void chdir_handler(struct arguments *args);
-void mkdir_handler(struct arguments *args);
-void readdir_handler(struct arguments *args);
-void isdir_handler(struct arguments *args);
-void inumber_handler(struct arguments *args);
-void symlink_handler(struct arguments *args);
-void dup2_handler(struct arguments *args);
-void mount_handler(struct arguments *args);
-void umount_handler(struct arguments *args);
+void halt_handler(struct intr_frame *f);
+void exit_handler(struct intr_frame *f);
+void fork_handler(struct intr_frame *f);
+void exec_handler(struct intr_frame *f);
+void wait_handler(struct intr_frame *f);
+void create_handler(struct intr_frame *f);
+void remove_handler(struct intr_frame *f);
+void open_handler(struct intr_frame *f);
+void filesize_handler(struct intr_frame *f);
+void read_handler(struct intr_frame *f);
+void write_handler(struct intr_frame *f);
+void seek_handler(struct intr_frame *f);
+void tell_handler(struct intr_frame *f);
+void close_handler(struct intr_frame *f);
+void mmap_handler(struct intr_frame *f);
+void mnumap_handler(struct intr_frame *f);
+void chdir_handler(struct intr_frame *f);
+void mkdir_handler(struct intr_frame *f);
+void readdir_handler(struct intr_frame *f);
+void isdir_handler(struct intr_frame *f);
+void inumber_handler(struct intr_frame *f);
+void symlink_handler(struct intr_frame *f);
+void dup2_handler(struct intr_frame *f);
+void mount_handler(struct intr_frame *f);
+void umount_handler(struct intr_frame *f);
 
 
 struct system_call syscall_list[] = {
@@ -114,117 +121,142 @@ void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
     
-    struct arguments args;
-    args.syscall_num = f->R.rax;
-    args.arg1 = f->R.rdi;
-    args.arg2 = f->R.rsi;
-    args.arg3 = f->R.rdx;
-    args.arg4 = f->R.r10;
-    args.arg5 = f->R.r8;
-    args.arg6 = f->R.r9;
 
-    struct system_call call = syscall_list[args.syscall_num];
-    if(call.syscall_num == args.syscall_num) {
-        call.function(&args);
+    struct system_call call = syscall_list[F_RAX];
+    if(call.syscall_num == F_RAX) {
+        call.function(f);
     }
 }
 
 
-void halt_handler(struct arguments *args) {
+void halt_handler(struct intr_frame *f) {
     power_off();
 }
 
-void exit_handler(struct arguments *args) {
+void exit_handler(struct intr_frame *f) {
     int status = args->arg1;
     thread_current()->process_status = status;
     thread_exit ();
 }
 
-void fork_handler(struct arguments *args) {
+void fork_handler(struct intr_frame *f) {
 
 }
 
-void exec_handler(struct arguments *args) {
+void exec_handler(struct intr_frame *f) {
+    char *file = args->arg1;
 
 }
 
-void wait_handler(struct arguments *args) {
+void wait_handler(struct intr_frame *f) {
 
 }
 
-void create_handler(struct arguments *args) {
+void create_handler(struct intr_frame *f) {
+    char *file = args->arg1;
+    unsigned initial_size = args->arg2;
+    check_address(file);
+    if (filesys_create(file, initial_size)){
+        return true;
+    }
+    else{
+        return false;
+    }
+}
+
+void remove_handler(struct intr_frame *f) {
+    char *file = args->arg1;
+    check_address(file);
+    if (filesys_remove(file)){
+        return true;
+    }
+    else{
+        return false;
+    }
+}
+
+void open_handler(struct intr_frame *f) {
+    char *file = args->arg1;
+    check_address(file);
+    if (filesys_open(file)){
+        return true;
+    }
+    else{
+        return false;
+    }
+}
+
+void filesize_handler(struct intr_frame *f) {
 
 }
 
-void remove_handler(struct arguments *args) {
+void read_handler(struct intr_frame *f) {
 
 }
 
-void open_handler(struct arguments *args) {
-
-}
-
-void filesize_handler(struct arguments *args) {
-
-}
-
-void read_handler(struct arguments *args) {
-
-}
-
-void write_handler(struct arguments *args) {
+void write_handler(struct intr_frame *f) {
     int fd = args->arg1;
     char *buffer = args->arg2;
     unsigned size = args->arg3;
     printf("%s", buffer);
 }
 
-void seek_handler(struct arguments *args) {
+void seek_handler(struct intr_frame *f) {
 
 }
 
-void tell_handler(struct arguments *args) {
+void tell_handler(struct intr_frame *f) {
 
 }
 
-void close_handler(struct arguments *args) {
+void close_handler(struct intr_frame *f) {
 
 }
 
-void mmap_handler(struct arguments *args) {
+void mmap_handler(struct intr_frame *f) {
 
 }
 
-void mnumap_handler(struct arguments *args) {
+void mnumap_handler(struct intr_frame *f) {
 
 }
 
-void chdir_handler(struct arguments *args) {
+void chdir_handler(struct intr_frame *f) {
 
 }
 
-void mkdir_handler(struct arguments *args) {
+void mkdir_handler(struct intr_frame *f) {
 
 }
-void readdir_handler(struct arguments *args) {
+void readdir_handler(struct intr_frame *f) {
     
 }
 
-void isdir_handler(struct arguments *args) {
+void isdir_handler(struct intr_frame *f) {
     
 }
-void inumber_handler(struct arguments *args) {
+void inumber_handler(struct intr_frame *f) {
     
 }
-void symlink_handler(struct arguments *args) {
+void symlink_handler(struct intr_frame *f) {
     
 }
-void dup2_handler(struct arguments *args) {
+void dup2_handler(struct intr_frame *f) {
     
 }
-void mount_handler(struct arguments *args) {
+void mount_handler(struct intr_frame *f) {
     
 }
-void umount_handler(struct arguments *args) {
+void umount_handler(struct intr_frame *f) {
     
+}
+
+void check_address(void *addr){
+    struct thread *curr = thread_current();
+
+    if (!is_user_vaddr(addr) || addr == NULL ||
+        pml4_get_page(curr->pml4, addr) == NULL)
+    {
+        exit_handler(-1);
+    }
 }
