@@ -9,14 +9,18 @@
 #include "intrinsic.h"
 #include "threads/init.h"
 #include "filesys/filesys.h"
+#include "filesys/file.h"
 
 #include <stdlib.h>
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 /* Project 2 User Memory Access 추가 */
-void check_address(void *addr);
-
+bool
+address_check(struct intr_frame *f, char *ptr);
+int add_file_to_fd_table(struct file *file);
+void kern_exit(struct intr_frame *f, int status);
+struct file *fd_to_struct_file(int fd);
 /* System call.
  *
  * Previously system call services was handled by the interrupt handler
@@ -32,13 +36,13 @@ void check_address(void *addr);
 
 #define SYSCALL_CNT 25
 
-#define F_RAX  f->R.rax
-#define F_ARG1  f->R.rdi
-#define F_ARG2  f->R.rsi
-#define F_ARG2  f->R.rdx
-#define F_ARG3  f->R.r10
-#define F_ARG4  f->R.r8
-#define F_ARG5  f->R.rd9
+#define F_RAX f->R.rax
+#define F_ARG1 f->R.rdi
+#define F_ARG2 f->R.rsi
+#define F_ARG3 f->R.rdx
+#define F_ARG4 f->R.r10
+#define F_ARG5 f->R.r8
+#define F_ARG6 f->R.r9
 
 
 struct system_call {
@@ -46,7 +50,7 @@ struct system_call {
     void (*function) (struct intr_frame *f);
 };
 
-
+ 
 void halt_handler(struct intr_frame *f);
 void exit_handler(struct intr_frame *f);
 void fork_handler(struct intr_frame *f);
@@ -114,6 +118,8 @@ syscall_init (void) {
 	 * mode stack. Therefore, we masked the FLAG_FL. */
 	write_msr(MSR_SYSCALL_MASK,
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+    /* project 2 User Program*/
+    lock_init(&filesys_lock);
 }
 
 /* The main system call interface */
@@ -121,7 +127,6 @@ void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
     
-
     struct system_call call = syscall_list[F_RAX];
     if(call.syscall_num == F_RAX) {
         call.function(f);
@@ -129,12 +134,13 @@ syscall_handler (struct intr_frame *f UNUSED) {
 }
 
 
+
 void halt_handler(struct intr_frame *f) {
     power_off();
 }
 
 void exit_handler(struct intr_frame *f) {
-    int status = args->arg1;
+    int status = F_ARG1;
     thread_current()->process_status = status;
     thread_exit ();
 }
@@ -144,7 +150,8 @@ void fork_handler(struct intr_frame *f) {
 }
 
 void exec_handler(struct intr_frame *f) {
-    char *file = args->arg1;
+    char *file = F_ARG1;
+    write_handler(f);
 
 }
 
@@ -153,64 +160,143 @@ void wait_handler(struct intr_frame *f) {
 }
 
 void create_handler(struct intr_frame *f) {
-    char *file = args->arg1;
-    unsigned initial_size = args->arg2;
-    check_address(file);
+    char *file = F_ARG1;
+    unsigned initial_size = F_ARG2;
+    address_check(f,file);
+    if (file == NULL){
+        kern_exit(f,-1);
+    }
     if (filesys_create(file, initial_size)){
-        return true;
+        F_RAX = true;
     }
     else{
-        return false;
+        F_RAX = false;
     }
 }
 
 void remove_handler(struct intr_frame *f) {
-    char *file = args->arg1;
-    check_address(file);
+    char *file = F_ARG1;
+    address_check(f,file);
     if (filesys_remove(file)){
-        return true;
+        F_RAX = true;
     }
     else{
-        return false;
+        F_RAX = false;
     }
 }
 
 void open_handler(struct intr_frame *f) {
-    char *file = args->arg1;
-    check_address(file);
-    if (filesys_open(file)){
-        return true;
+    char *file = F_ARG1;
+    address_check(f,file);
+    struct file *file_obj =filesys_open(file);
+    if (file_obj == NULL){
+        F_RAX = -1;
+        return F_RAX;
     }
-    else{
-        return false;
+    int fd = add_file_to_fd_table(file_obj);
+
+    // 만약에 파일을 열 수 없으면 -1을 받는다
+    if (fd == -1){
+        file_close(file_obj);
     }
+    F_RAX = fd;
+    return F_RAX;
 }
 
 void filesize_handler(struct intr_frame *f) {
+    int *fd =F_ARG1;
+    struct file *fileobj = fd_to_struct_file(fd);
+    F_RAX = file_length(fileobj);
 
 }
 
 void read_handler(struct intr_frame *f) {
-
+    int fd = F_ARG1;
+    void *buffer = F_ARG2;
+    unsigned size = F_ARG3;
+    address_check(f,buffer);
+    address_check(f,buffer+size-1);
+    int read_count;
+    struct file *fileobj = fd_to_struct_file(fd);
+    if (fileobj ==NULL){
+        F_RAX = -1;
+        return F_RAX;
+    }
+    // STDIN 일때
+    if (fd == 0){
+        char key;
+        for (read_count = 0; read_count<size;read_count++){
+            key = input_getc();
+            if(key == '\0'){
+                break;
+            }
+        }
+    }
+    else if(fd == 1){
+        F_RAX = -1;
+        return F_RAX;
+    }
+    else{
+        lock_acquire(&filesys_lock);
+        read_count = file_read(fileobj,buffer,size);
+        lock_release(&filesys_lock);
+    }
+    F_RAX = read_count;
 }
 
 void write_handler(struct intr_frame *f) {
-    int fd = args->arg1;
-    char *buffer = args->arg2;
-    unsigned size = args->arg3;
-    printf("%s", buffer);
+    int fd = (int)F_ARG1;
+    char *buffer =(char *) F_ARG2;
+    unsigned size = F_ARG3;
+    address_check(f,buffer);
+    struct file *fileobj = fd_to_struct_file(fd);
+    int read_count;
+    if (fileobj ==NULL){
+        F_RAX = -1;
+        return F_RAX;
+    }
+    if(fd == 1){
+        putbuf(buffer, size);
+        F_RAX = size;
+    }
+    else if (fd ==0){
+        F_RAX = -1;
+        return F_RAX;
+    }
+    // else if (fd < 0){
+    //     kern_exit(f,-1);
+    // }
+    else{
+        lock_acquire(&filesys_lock);
+        read_count = file_write(fileobj, buffer, size);
+        lock_release(&filesys_lock);
+        F_RAX = read_count;
+    }
+    // printf("%s", buffer);
 }
 
 void seek_handler(struct intr_frame *f) {
-
+    int fd = F_ARG1;
+    unsigned position = F_ARG2;
+    struct file *fileobj = fd_to_struct_file(fd);
+    file_seek(fileobj, position);
 }
 
 void tell_handler(struct intr_frame *f) {
-
+    int fd = F_ARG1;
+    struct file *fileobj = fd_to_struct_file(fd);
+    F_RAX = file_tell(fileobj);
 }
 
 void close_handler(struct intr_frame *f) {
+    int fd = F_ARG1;
+    struct file *fileobj = fd_to_struct_file(fd);
+    struct thread *curr = thread_current();
+    struct file **fdt = curr->file_descriptor_table;
+    // printf("fdt[fd]를---- %p -----보고 싶어요\n",fdt[fd]);
+    // file_close(fileobj);
 
+    // printf("<<<<<<<<<<<<<>>>><<><><><><><><><><<>>>>>>>>>>>\n");
 }
 
 void mmap_handler(struct intr_frame *f) {
@@ -248,15 +334,44 @@ void mount_handler(struct intr_frame *f) {
     
 }
 void umount_handler(struct intr_frame *f) {
-    
 }
 
-void check_address(void *addr){
-    struct thread *curr = thread_current();
+bool
+address_check(struct intr_frame *f, char *ptr) {
+    if(pml4_get_page(thread_current()->pml4, ptr) == NULL) kern_exit(f,-1);
+    // return pml4_get_page(thread_current()->pml4, ptr) != NULL;
+}
 
-    if (!is_user_vaddr(addr) || addr == NULL ||
-        pml4_get_page(curr->pml4, addr) == NULL)
-    {
-        exit_handler(-1);
+int add_file_to_fd_table(struct file *file){
+    struct thread *curr = thread_current();
+    struct file **fdt = curr->file_descriptor_table;
+    int fd = curr->fdidx;   // fd의 값은 2부터 출발
+
+    while(curr->file_descriptor_table[fd] != NULL && fd < FDT_COUNT_LIMIT){
+        fd++;
     }
+
+    if (fd >= FDT_COUNT_LIMIT){
+        return -1;
+    }
+    curr -> fdidx = fd;
+    fdt[fd] = file;
+    return fd;
+}
+
+struct file *fd_to_struct_file(int fd){
+    if (fd<0 || fd >= FDT_COUNT_LIMIT){
+        return NULL;
+    }
+    struct thread *curr = thread_current();
+    struct file **fdt = curr->file_descriptor_table;
+
+    struct file *file = fdt[fd];
+    return file;
+}
+
+void kern_exit(struct intr_frame *f, int status){
+    F_ARG1 = status;
+    exit_handler(f);
+    NOT_REACHED();
 }

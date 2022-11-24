@@ -210,6 +210,15 @@ thread_create (const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
+	/* project 2 User Program */
+	t->file_descriptor_table = palloc_get_multiple(PAL_ZERO, FDT_PAGES);
+	if(t->file_descriptor_table == NULL){
+		return TID_ERROR;
+	}
+	t->fdidx = 2;		// 0은 stdin, 1은 stdou에 이미 할당 되어있음
+	t->file_descriptor_table[0] = 1;
+	t->file_descriptor_table[1] = 2;
+
 	/* Add to run queue. */
 	thread_unblock (t);
 
@@ -435,7 +444,8 @@ init_thread (struct thread *t, const char *name, int priority) {
     t->ori_priority = ORI_PRI_DEFAULT;
     t->holding_lock_count = 0;
     t->waiting_lock = NULL;
-    t->process_status = PRE_DEFAULT;
+    t->process_status = PRE_DEFAULT;	/* Project 2 User Program */
+
 	t->magic = THREAD_MAGIC;
 }
 

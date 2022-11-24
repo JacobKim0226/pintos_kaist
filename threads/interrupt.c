@@ -13,6 +13,7 @@
 #include "intrinsic.h"
 #ifdef USERPROG
 #include "userprog/gdt.h"
+/* Project 2 User Program */
 #endif
 
 /* Number of x86_64 interrupts. */
@@ -109,6 +110,8 @@ static void pic_end_of_interrupt (int irq);
 
 /* Interrupt handlers. */
 void intr_handler (struct intr_frame *args);
+
+void kern_exit(struct intr_frame *f, int status);
 
 /* Returns the current interrupt status. */
 enum intr_level
@@ -345,6 +348,10 @@ intr_handler (struct intr_frame *frame) {
 		in_external_intr = true;
 		yield_on_return = false;
 	}
+	/* 추가 해보기 */
+	else{
+		kern_exit(frame, -1);
+	}
 
 	/* Invoke the interrupt's handler. */
 	handler = intr_handlers[frame->vec_no];
@@ -401,5 +408,6 @@ intr_dump_frame (const struct intr_frame *f) {
 /* Returns the name of interrupt VEC. */
 const char *
 intr_name (uint8_t vec) {
+	/**/
 	return intr_names[vec];
 }

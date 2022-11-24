@@ -211,9 +211,9 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	while(1){}
+	// while(1){}
 	// for(int i=0; i<100000000; i++);		// 수정수정
-    // thread_set_priority(thread_get_priority()-1);
+    thread_set_priority(thread_get_priority()-1);
     return -1;
 }
 
@@ -225,7 +225,7 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
-    if(curr->process_status != PRE_DEFAULT) {
+    if(curr->pml4 != NULL) {
         printf("%s: exit(%d)\n",curr->name, curr->process_status);
     }
     
@@ -350,7 +350,7 @@ load (const char *file_name, struct intr_frame *if_) {
 
     /* PROJECT 2: ARGUMENT PASSING */
     char *save_ptr, *f_name;
-    char *tmp, *args[128];
+    char *tmp, *args[64];
     int argc = 1;
 
     args[0] = strtok_r(file_name, " ", &save_ptr);
@@ -444,7 +444,7 @@ load (const char *file_name, struct intr_frame *if_) {
 
     /* 4단계: 문자열 넣기 */
     size_t sum = 0;
-    char *address[128];
+    char *address[64];
 
     for(int i = argc-1; i >= 0; i--) {
         uintptr_t len = strlen(args[i]) + 1;   // '\0' 포함
