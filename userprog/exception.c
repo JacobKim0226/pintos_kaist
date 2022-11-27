@@ -155,6 +155,11 @@ page_fault (struct intr_frame *f) {
 			not_present ? "not present" : "rights violation",
 			write ? "writing" : "reading",
 			user ? "user" : "kernel");
-	kill (f);
+	if(user){
+		kern_exit(f,-1);
+	}
+	else{
+		kill (f);
+	}
 }
 

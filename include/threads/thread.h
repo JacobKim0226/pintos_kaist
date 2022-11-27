@@ -32,7 +32,8 @@ typedef int tid_t;
 #define ORI_PRI_DEFAULT -1              /* priority가 될 수 없는 값. ori_priority의 초기값으로 사용됨 */
 #define PRE_DEFAULT -99999				/* Project 2 User Program */
 #define FDT_PAGES 3						/* Project 2 User Program */
-#define FDT_COUNT_LIMIT FDT_PAGES *(1<<9)		/* Project 2 User Program */
+#define FDT_COUNT_LIMIT (1<<9)
+// #define FDT_PAGES *(1<<9)		/* Project 2 User Program */
 
 /* A kernel thread or user process.
  *
@@ -105,8 +106,17 @@ struct thread {
 	int exit_status;					/* PROJECT 2 - User Programs */
 	struct file **file_descriptor_table; /* PROJECT 2 - User Programs */
 	int fdidx; //fd index				/* PROJECT 2 - User Programs */
+	struct file *my_exec_file;			/* PROJECT 2 - User Programs */
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+
+	bool is_waited;						/*  */
+	struct list child_list;				/* Project 2 User Programs */
+	struct list_elem child_elem;		/* Project 2 User Programs */
+	struct intr_frame parent_if;		/* Project 2 User Programs */
+	struct semaphore fork_sema;		/* Project 2 User Programs */
+	struct semaphore wait_sema;		/* Project 2 User Programs */
+	struct semaphore free_sema;		/* Project 2 User Programs */
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */

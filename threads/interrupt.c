@@ -13,7 +13,6 @@
 #include "intrinsic.h"
 #ifdef USERPROG
 #include "userprog/gdt.h"
-/* Project 2 User Program */
 #endif
 
 /* Number of x86_64 interrupts. */
@@ -348,10 +347,10 @@ intr_handler (struct intr_frame *frame) {
 		in_external_intr = true;
 		yield_on_return = false;
 	}
-	/* 추가 해보기 */
-	else{
-		kern_exit(frame, -1);
-	}
+	/* 추가 해보기   */
+	// else{
+	// 	kern_exit(frame, -1);
+	// }
 
 	/* Invoke the interrupt's handler. */
 	handler = intr_handlers[frame->vec_no];

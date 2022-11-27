@@ -43,6 +43,8 @@ static struct list destruction_req;
 /* PROJECT 1 - Alarm Clock */
 static struct semaphore sleep_list;
 
+/* project 2 user program*/
+
 /* Statistics. */
 static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
@@ -218,6 +220,9 @@ thread_create (const char *name, int priority,
 	t->fdidx = 2;		// 0은 stdin, 1은 stdou에 이미 할당 되어있음
 	t->file_descriptor_table[0] = 1;
 	t->file_descriptor_table[1] = 2;
+
+	struct thread *curr = thread_current();
+	list_push_back(&curr->child_list, &t->child_elem);
 
 	/* Add to run queue. */
 	thread_unblock (t);
@@ -445,6 +450,15 @@ init_thread (struct thread *t, const char *name, int priority) {
     t->holding_lock_count = 0;
     t->waiting_lock = NULL;
     t->process_status = PRE_DEFAULT;	/* Project 2 User Program */
+	t->exit_status =0;
+	t->my_exec_file=NULL;
+	/* Project 2 User Program */
+	
+	t->is_waited = false;
+	list_init(&t->child_list);
+	sema_init(&t->fork_sema,0);
+	sema_init(&t->wait_sema,0);
+	sema_init(&t->free_sema,0);
 
 	t->magic = THREAD_MAGIC;
 }

@@ -385,3 +385,5 @@ sema_compare(const struct list_elem *a, const struct list_elem *b, void *aux) {
     return list_entry(ae, struct thread, elem)->priority <
             list_entry(be, struct thread, elem)->priority;
 }
+
+
