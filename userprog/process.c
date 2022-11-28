@@ -30,6 +30,7 @@ static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
 struct thread *get_child(int pid);
+void close_handler_usefd(int fd);
 
 /* General process initializer for initd and other process. */
 static void
@@ -87,12 +88,11 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	memcpy(&parent->parent_if, if_,sizeof(struct intr_frame));
 
 	tid_t pid =thread_create(name, PRI_DEFAULT,__do_fork,parent);
-	struct thread *child = get_child(pid);
-	
 	if (pid == TID_ERROR){
 		// sema_down(&child->fork_sema);
 		return TID_ERROR;
 	}
+	struct thread *child = get_child(pid);
 	sema_down(&child->fork_sema);
 	return pid;	
 	
@@ -157,9 +157,11 @@ __do_fork (void *aux) {
 	struct intr_frame *parent_if;
 	bool succ = true;
 	parent_if = &parent -> parent_if;
+	// printf("너 여기 들어오는지 확인을 해보겠어\n");
 	/* 1. Read the cpu context to local stack. */
 	memcpy (&if_, parent_if, sizeof (struct intr_frame));
-	
+	// if_.R.rax = 0;
+
 
 	/* 2. Duplicate PT */
 	current->pml4 = pml4_create();
@@ -181,9 +183,9 @@ __do_fork (void *aux) {
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
-	// if (parent->fdidx == FDT_COUNT_LIMIT){
-	// 	goto error;
-	// }
+	if (parent->fdidx >= FDT_COUNT_LIMIT){
+		goto error;
+	}
 	current->file_descriptor_table[0] = parent->file_descriptor_table[0];
 	current->file_descriptor_table[1] = parent->file_descriptor_table[1];
 	for (int i =2; i<FDT_COUNT_LIMIT;i++){
@@ -193,21 +195,22 @@ __do_fork (void *aux) {
 		}
 		current->file_descriptor_table[i] = file_duplicate(f);
 	}
-	// current->fdidx = parent->fdidx;
+	current->fdidx = parent->fdidx;
 	if_.R.rax = 0;
 	process_init ();
-
+	// printf("너 여기 들어 오기는 하냐? 맞을래?\n");
 	/* Finally, switch to the newly created process. */
 	if (succ){
 		do_iret (&if_);
 	}
 	sema_up(&current->fork_sema);
 error:
-	// current->process_status = TID_ERROR;
-	sema_up(&current->fork_sema);
-	// if_.R.rdi = TID_ERROR;
-	// exit_handler(if_);
-	thread_exit ();
+	// printf("너 설마 여기도 들어오니? 오면 넌 끝났다\n");
+	current->process_status = TID_ERROR;
+	// sema_up(&current->fork_sema);
+	if_.R.rdi = TID_ERROR;
+	exit_handler(&if_);
+	// thread_exit ();
 }
 
 /* child list를 순회하며 찾은 뒤 해당 자식 스레드를 반환
@@ -247,11 +250,11 @@ process_exec (void *f_name) {
 	/* And then load the binary */
 	success = load (file_name, &_if);
 
-	/* If load failed, quit. */
-	palloc_free_page (file_name);
 	if (!success)
 		return -1;
 
+	/* If load failed, quit. */
+	palloc_free_page (file_name);
     // hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
     
 	/* Start switched process. */
@@ -306,18 +309,18 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
-    // if(curr->pml4 != NULL) {
-    //     printf("%s: exit(%d)\n",curr->name, curr->process_status);
-    // }
-	// file_close(curr);
-	file_close(curr->my_exec_file);
+
+	for(int i=2; i < FDT_COUNT_LIMIT; i++){
+		close_handler_usefd(i);
+	}
+
+
+	palloc_free_multiple(curr->file_descriptor_table,FDT_PAGES);
+	process_cleanup ();
+    
 	sema_up(&curr->wait_sema);
 	sema_up(&curr->fork_sema);
 	sema_down(&curr->free_sema);   // 확인 필요
-
-	palloc_free_page(curr->file_descriptor_table);
-	process_cleanup ();
-    
 }
 
 /* Free the current process's resources. */

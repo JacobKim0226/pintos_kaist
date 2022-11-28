@@ -26,6 +26,7 @@ struct file *fd_to_struct_file(int fd);
 tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED);
 void remove_file_from_fdt(int fd);
+void close_handler_usefd(int fd);
 /* System call.
  *
  * Previously system call services was handled by the interrupt handler
@@ -149,13 +150,13 @@ void exit_handler(struct intr_frame *f) {
     int status = F_ARG1;
     struct thread *curr = thread_current();
     thread_current()->process_status = status;
-    if(curr->pml4 != NULL) {
-        printf("%s: exit(%d)\n",curr->name, curr->process_status);
-    }
-    for (int i = 0; i<FDT_COUNT_LIMIT; i++){
-        // F_ARG1 = i;
-        close_handler(f);
-    }
+    // if(curr->pml4 != NULL) {
+    printf("%s: exit(%d)\n",curr->name, curr->process_status);
+    // }
+    // for (int i = 2; i<FDT_COUNT_LIMIT; i++){
+    //     // F_ARG1 = i;
+    //     close_handler(f);
+    // }
     thread_exit ();
 }
 
@@ -183,7 +184,7 @@ void exec_handler(struct intr_frame *f) {
     }
     // strlcpy(fn_copy,file,size);
     
-    F_RAX = process_exec(fn_copy);
+    // F_RAX = process_exec(fn_copy);
 
 
 
@@ -206,9 +207,6 @@ void create_handler(struct intr_frame *f) {
     if (file == NULL){
         kern_exit(f,-1);
     }
-    // acquire_file_lock(&filesys_lock);
-    // F_RAX = filesys_open(file);
-    // release_file_lock(&filesys_lock);
     if (filesys_create(file, initial_size)){
         F_RAX = true;
     }
@@ -288,24 +286,25 @@ void read_handler(struct intr_frame *f) {
         return F_RAX;
     }
     // STDIN 일때
-    if (fd == STDIN_FILENO){
-        char key;
-        for (read_count = 0; read_count<size;read_count++){
-            key = input_getc();
-            if(key == '\0'){
-                break;
-            }
-        }
-    }
-    else if(fd == STDOUT_FILENO){
+    // if (fd == STDIN_FILENO){
+    //     char key;
+    //     for (read_count = 0; read_count<size;read_count++){
+    //         key = input_getc();
+    //         if(key == '\0'){
+    //             break;
+    //         }
+    //     }
+    // }
+    // else if(fd == STDOUT_FILENO){
+    if(fd == STDOUT_FILENO){
         F_RAX = -1;
         return F_RAX;
     }
-    else{
-        lock_acquire(&filesys_lock);
-        read_count = file_read(fileobj,buffer,size);
-        lock_release(&filesys_lock);
-    }
+    // else{
+    lock_acquire(&filesys_lock);
+    read_count = file_read(fileobj,buffer,size);
+    lock_release(&filesys_lock);
+    // }
     // lock_acquire(&filesys_lock);
     // read_count = file_read(fileobj,buffer,size);
     // lock_release(&filesys_lock);
@@ -380,6 +379,7 @@ void tell_handler(struct intr_frame *f) {
         return;
     }
     struct file *fileobj = fd_to_struct_file(fd);
+    address_check(f,fileobj);
     F_RAX = file_tell(fileobj);
 }
 
@@ -389,23 +389,13 @@ void close_handler(struct intr_frame *f) {
     struct thread *curr = thread_current();
     struct file **fdt = curr->file_descriptor_table;
     if(fileobj == NULL){
-        // printf("여기 들어오니?");
         return ;
     }
-    // printf("s::::::::::::::::::::::::::::::::: %d\n",fd);
-    if (fd<=2){
-        return;
-    }
+
     lock_acquire(&filesys_lock);
     file_close(fileobj);
     lock_release(&filesys_lock);
     remove_file_from_fdt(fd);
-    // printf("이거는뭐일까요???? %p",fdt[2]);
-
-    // printf("fdt[fd]를---- %p -----보고 싶어요\n",fdt[fd]);
-    // file_close(fileobj);
-
-    // printf("<<<<<<<<<<<<<>>>><<><><><><><><><><<>>>>>>>>>>>\n");
 }
 
 void mmap_handler(struct intr_frame *f) {
@@ -447,7 +437,7 @@ void umount_handler(struct intr_frame *f) {
 
 bool
 address_check(struct intr_frame *f, char *ptr) {
-    if(pml4_get_page(thread_current()->pml4, ptr) == NULL) kern_exit(f,-1);
+    if(!(is_user_vaddr(ptr)) || pml4_get_page(thread_current() -> pml4, ptr) == NULL) kern_exit(f,-1);
     // return pml4_get_page(thread_current()->pml4, ptr) != NULL;
 }
 
@@ -490,25 +480,37 @@ void remove_file_from_fdt(int fd){
     if (fd <0 || fd >= FDT_COUNT_LIMIT){
         return;
     }
-    curr->file_descriptor_table[fd] == NULL;
+    curr->file_descriptor_table[fd] = NULL;
 }
 
-void
-acquire_file_lock (struct lock *flie_lock) {
-	if (!intr_context () && use_file_read_lock) {
-		if (lock_held_by_current_thread (flie_lock)) 
-			file_read_lock_depth++; 
-		else
-			lock_acquire (flie_lock); 
-	}
-}
+// void
+// acquire_file_lock (struct lock *flie_lock) {
+// 	if (!intr_context () && use_file_read_lock) {
+// 		if (lock_held_by_current_thread (flie_lock)) 
+// 			file_read_lock_depth++; 
+// 		else
+// 			lock_acquire (flie_lock); 
+// 	}
+// }
 
-void
-release_file_lock (struct lock *flie_lock) {
-	if (!intr_context () && use_file_read_lock) {
-		if (file_read_lock_depth > 0)
-			file_read_lock_depth--;
-		else
-			lock_release (flie_lock); 
+// void
+// release_file_lock (struct lock *flie_lock) {
+// 	if (!intr_context () && use_file_read_lock) {
+// 		if (file_read_lock_depth > 0)
+// 			file_read_lock_depth--;
+// 		else
+// 			lock_release (flie_lock); 
+// 	}
+// }
+
+void close_handler_usefd(int fd) {
+	struct file *close_file = fd_to_struct_file(fd);
+	if (close_file == NULL){
+		return ;
 	}
+
+	lock_acquire(&filesys_lock);
+	file_close(close_file);
+	lock_release(&filesys_lock);
+	remove_file_from_fdt(fd);
 }
