@@ -103,10 +103,8 @@ struct thread {
     unsigned int holding_lock_count;    /* PROJECT 1 - Priority Scheduling */
     struct lock *waiting_lock;          /* PROJECT 1 - Priority Scheduling */
     int process_status;                 /* PROJECT 2 - User Programs */
-	int exit_status;					/* PROJECT 2 - User Programs */
 	struct file **file_descriptor_table; /* PROJECT 2 - User Programs */
 	int fdidx; //fd index				/* PROJECT 2 - User Programs */
-	struct file *my_exec_file;			/* PROJECT 2 - User Programs */
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
@@ -174,5 +172,7 @@ struct semaphore *get_sleep_list(void);
 bool thread_compare(const struct list_elem *a, const struct list_elem *b, void *aux);
 struct thread *thread_pop_max(struct list *list);
 struct thread *thread_get_max(struct list *list);
+bool
+thread_compare2(struct thread *at, struct thread *bt);
 
 #endif /* threads/thread.h */

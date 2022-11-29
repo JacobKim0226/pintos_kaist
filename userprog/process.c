@@ -20,6 +20,7 @@
 #include "intrinsic.h"
 #include "lib/string.h"
 #include "lib/stdio.h"      // hex_dump() 쓸거야
+#include "userprog/syscall.h"
 
 #ifdef VM
 #include "vm/vm.h"
@@ -193,24 +194,26 @@ __do_fork (void *aux) {
 		if(f==NULL){
 			continue;
 		}
+		lock_acquire(&filesys_lock);
 		current->file_descriptor_table[i] = file_duplicate(f);
+		lock_release(&filesys_lock);
 	}
 	current->fdidx = parent->fdidx;
 	if_.R.rax = 0;
+	sema_up(&current->fork_sema);
 	process_init ();
 	// printf("너 여기 들어 오기는 하냐? 맞을래?\n");
 	/* Finally, switch to the newly created process. */
 	if (succ){
 		do_iret (&if_);
 	}
-	sema_up(&current->fork_sema);
 error:
 	// printf("너 설마 여기도 들어오니? 오면 넌 끝났다\n");
 	current->process_status = TID_ERROR;
-	// sema_up(&current->fork_sema);
+	sema_up(&current->fork_sema);
 	if_.R.rdi = TID_ERROR;
-	exit_handler(&if_);
-	// thread_exit ();
+	// exit_handler(&if_);
+	thread_exit ();
 }
 
 /* child list를 순회하며 찾은 뒤 해당 자식 스레드를 반환
@@ -248,7 +251,9 @@ process_exec (void *f_name) {
 	process_cleanup ();
 
 	/* And then load the binary */
+	lock_acquire(&filesys_lock);
 	success = load (file_name, &_if);
+	lock_release(&filesys_lock);
 
 	if (!success)
 		return -1;
@@ -319,8 +324,8 @@ process_exit (void) {
 	process_cleanup ();
     
 	sema_up(&curr->wait_sema);
-	sema_up(&curr->fork_sema);
-	sema_down(&curr->free_sema);   // 확인 필요
+	// sema_up(&curr->fork_sema);
+	sema_down(&curr->free_sema);  
 }
 
 /* Free the current process's resources. */
@@ -521,8 +526,6 @@ load (const char *file_name, struct intr_frame *if_) {
 				break;
 		}
 	}
-	// file_deny_write(file);
-    // t->my_exec_file = file;
 
 	/* Set up stack. */
 	if (!setup_stack (if_))

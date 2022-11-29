@@ -450,8 +450,6 @@ init_thread (struct thread *t, const char *name, int priority) {
     t->holding_lock_count = 0;
     t->waiting_lock = NULL;
     t->process_status = PRE_DEFAULT;	/* Project 2 User Program */
-	t->exit_status =0;
-	t->my_exec_file=NULL;
 	/* Project 2 User Program */
 	
 	t->is_waited = false;
@@ -468,7 +466,22 @@ thread_compare(const struct list_elem *a, const struct list_elem *b, void *aux U
     struct thread *at, *bt;
     at = list_entry(a, struct thread, elem);
     bt = list_entry(b, struct thread, elem);
-    if(at->priority == bt->priority) {
+	return thread_compare2(at,bt);
+    // if(at->priority == bt->priority) {
+    //     if(at->ori_priority == bt->ori_priority) {
+    //         return at->priority < bt->priority;
+    //     } else if(at->ori_priority < bt->ori_priority) {
+    //         return at->ori_priority != ORI_PRI_DEFAULT;
+    //     } else {
+    //         return bt->ori_priority == ORI_PRI_DEFAULT;
+    //     }
+    // } else {
+    //     return at->priority < bt->priority;
+    // }
+}
+bool
+thread_compare2(struct thread *at, struct thread *bt){
+	    if(at->priority == bt->priority) {
         if(at->ori_priority == bt->ori_priority) {
             return at->priority < bt->priority;
         } else if(at->ori_priority < bt->ori_priority) {

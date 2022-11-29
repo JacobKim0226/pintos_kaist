@@ -149,14 +149,9 @@ void halt_handler(struct intr_frame *f) {
 void exit_handler(struct intr_frame *f) {
     int status = F_ARG1;
     struct thread *curr = thread_current();
+
     thread_current()->process_status = status;
-    // if(curr->pml4 != NULL) {
     printf("%s: exit(%d)\n",curr->name, curr->process_status);
-    // }
-    // for (int i = 2; i<FDT_COUNT_LIMIT; i++){
-    //     // F_ARG1 = i;
-    //     close_handler(f);
-    // }
     thread_exit ();
 }
 
@@ -182,16 +177,6 @@ void exec_handler(struct intr_frame *f) {
         // F_RAX = -1;
         // return F_RAX;
     }
-    // strlcpy(fn_copy,file,size);
-    
-    // F_RAX = process_exec(fn_copy);
-
-
-
-
-    // NOT_REACHED();
-    // F_RAX =0;
-    // return F_RAX;
 }
 
 void wait_handler(struct intr_frame *f) {
@@ -200,7 +185,6 @@ void wait_handler(struct intr_frame *f) {
 }
 
 void create_handler(struct intr_frame *f) {
-    // F_RAX = false;
     char *file = F_ARG1;
     unsigned initial_size = F_ARG2;
     address_check(f,file);
@@ -216,15 +200,11 @@ void create_handler(struct intr_frame *f) {
 }
 
 void remove_handler(struct intr_frame *f) {
-    // F_RAX = false;
     char *file = F_ARG1;
     address_check(f,file);
     if(file ==NULL ) return;
     if(strlen(file) == 0) return;
 
-    // acquire_file_lock(&filesys_lock);
-    // F_RAX = filesys_remove(file);
-    // release_file_lock(&filesys_lock);
     if (filesys_remove(file)){
         F_RAX = true;
     }
@@ -243,18 +223,15 @@ void open_handler(struct intr_frame *f) {
     }
     lock_release(&filesys_lock);
     if (file_obj == NULL){
-        // kern_exit(f,-1);
         F_RAX = -1;
         return F_RAX;
     }
     int fd = add_file_to_fd_table(file_obj);
 
-    // 만약에 파일을 열 수 없으면 -1을 받는다
     if (fd == -1){
+        lock_acquire(&filesys_lock);
         file_close(file_obj);
-        // F_RAX = -1;
-        // return F_RAX;
-        // kern_exit(f,-1);
+        lock_release(&filesys_lock);
     }
     F_RAX = fd;
     return F_RAX;
@@ -277,41 +254,17 @@ void read_handler(struct intr_frame *f) {
     int read_count;
     struct file *fileobj = fd_to_struct_file(fd);
 
-    // if(fd < 0 || FDT_COUNT_LIMIT <= fd){
-    //     kern_exit(f,-1);
-    // }
-    // if(fd == 1) kern_exit(f,-1);
     if (fileobj ==NULL){
         F_RAX = -1;
         return F_RAX;
     }
-    // STDIN 일때
-    // if (fd == STDIN_FILENO){
-    //     char key;
-    //     for (read_count = 0; read_count<size;read_count++){
-    //         key = input_getc();
-    //         if(key == '\0'){
-    //             break;
-    //         }
-    //     }
-    // }
-    // else if(fd == STDOUT_FILENO){
     if(fd == STDOUT_FILENO){
         F_RAX = -1;
         return F_RAX;
     }
-    // else{
     lock_acquire(&filesys_lock);
     read_count = file_read(fileobj,buffer,size);
     lock_release(&filesys_lock);
-    // }
-    // lock_acquire(&filesys_lock);
-    // read_count = file_read(fileobj,buffer,size);
-    // lock_release(&filesys_lock);
-
-    // acquire_file_lock(&filesys_lock);
-    // read_count = file_read(fileobj,buffer,size);
-    // release_file_lock(&filesys_lock);
     F_RAX = read_count;
 }
 
@@ -322,26 +275,6 @@ void write_handler(struct intr_frame *f) {
     address_check(f,buffer);
     struct file *fileobj = fd_to_struct_file(fd);
     int read_count;
-
-    // if(fd == STDIN_FILENO){
-    //     F_RAX = 0;
-    //     return F_RAX;
-    // }
-    // else if(fd == STDOUT_FILENO){
-    //     putbuf(buffer,size);
-    //     F_RAX = size;
-    //     return F_RAX;
-    // }
-    // else{
-    //     struct file *fileobj = fd_to_struct_file(fd);
-    //     if(fileobj ==NULL){
-    //         F_RAX =0;
-    //         return F_RAX;
-    //     }
-    //     lock_acquire(&filesys_lock);
-    //     read_count = file_write(fileobj, buffer, size);
-    //     lock_release(&filesys_lock);
-    // }
 
     if (fileobj ==NULL){
         F_RAX = -1;
@@ -355,9 +288,6 @@ void write_handler(struct intr_frame *f) {
         F_RAX = 0;
         return F_RAX;
     }
-    // else if (fd < 0){
-    //     kern_exit(f,-1);
-    // }
     else{
         lock_acquire(&filesys_lock);
         read_count = file_write(fileobj, buffer, size);
@@ -438,13 +368,11 @@ void umount_handler(struct intr_frame *f) {
 bool
 address_check(struct intr_frame *f, char *ptr) {
     if(!(is_user_vaddr(ptr)) || pml4_get_page(thread_current() -> pml4, ptr) == NULL) kern_exit(f,-1);
-    // return pml4_get_page(thread_current()->pml4, ptr) != NULL;
 }
 
 int add_file_to_fd_table(struct file *file){
     int fd = 2;   // fd의 값은 2부터 출발
     struct thread *curr = thread_current();
-    // struct file **fdt = curr->file_descriptor_table;
 
     while(curr->file_descriptor_table[fd] != NULL && fd < FDT_COUNT_LIMIT){
         fd++;
@@ -461,10 +389,6 @@ struct file *fd_to_struct_file(int fd){
     if (fd<0 || fd >= FDT_COUNT_LIMIT){
         return NULL;
     }
-    // struct thread *curr = thread_current();
-    // struct file **fdt = curr->file_descriptor_table;
-    // struct file *file = fdt[fd];
-    // return file;
 
     struct thread *curr = thread_current();
     return curr->file_descriptor_table[fd];
@@ -483,25 +407,6 @@ void remove_file_from_fdt(int fd){
     curr->file_descriptor_table[fd] = NULL;
 }
 
-// void
-// acquire_file_lock (struct lock *flie_lock) {
-// 	if (!intr_context () && use_file_read_lock) {
-// 		if (lock_held_by_current_thread (flie_lock)) 
-// 			file_read_lock_depth++; 
-// 		else
-// 			lock_acquire (flie_lock); 
-// 	}
-// }
-
-// void
-// release_file_lock (struct lock *flie_lock) {
-// 	if (!intr_context () && use_file_read_lock) {
-// 		if (file_read_lock_depth > 0)
-// 			file_read_lock_depth--;
-// 		else
-// 			lock_release (flie_lock); 
-// 	}
-// }
 
 void close_handler_usefd(int fd) {
 	struct file *close_file = fd_to_struct_file(fd);
