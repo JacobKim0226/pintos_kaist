@@ -2,6 +2,9 @@
 #define VM_VM_H
 #include <stdbool.h>
 #include "threads/palloc.h"
+#include "kernel/list.h"	// project 3 Virtual Memory
+#include "../include/lib/kernel/hash.h"
+
 
 enum vm_type {
 	/* page not initialized */
@@ -24,13 +27,18 @@ enum vm_type {
 	VM_MARKER_END = (1 << 31),
 };
 
+enum position{
+	VM_FRAME = 0,
+	VM_DISK = 1,
+	VM_SWAP = 2,
+};
+
 #include "vm/uninit.h"
 #include "vm/anon.h"
 #include "vm/file.h"
 #ifdef EFILESYS
 #include "filesys/page_cache.h"
 #endif
-
 struct page_operations;
 struct thread;
 
@@ -42,11 +50,12 @@ struct thread;
  * DO NOT REMOVE/MODIFY PREDEFINED MEMBER OF THIS STRUCTURE. */
 struct page {
 	const struct page_operations *operations;
-	void *va;              /* Address in terms of user space */
+	void *va;              /* Add 	ress in terms of user space */
 	struct frame *frame;   /* Back reference for frame */
 
 	/* Your implementation */
-
+	bool writable;						// project 3 Virtual Memory 추가
+	struct hash_elem hash_elem;			// project 3 Virtual Memory 추가
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
 	union {
@@ -84,8 +93,25 @@ struct page_operations {
 /* Representation of current process's memory space.
  * We don't want to force you to obey any specific design for this struct.
  * All designs up to you for this. */
+/* Supple*/
 struct supplemental_page_table {
+	// 어떤 것이 여기에 필요할 까?
+	// 1. 각각의 페이지에 대해서 데이터가 존재하는 곳(frame, disk, swap 등)
+	// 2. 이에 상응하는 커널 가상주소를 가리키는 포인터 정보
+	// 3. active인지 inactive인지 판별하는 정보
+	bool success;
+	struct hash hash;  // Page들의 리스트 선언
+	
 };
+
+/* Pagetable을 관리하는 pt 노드 구조체
+ * page구조체의 page를 선언
+ * position  */
+// struct page_table_node {
+// 	struct page *page;	
+// 	enum position position;
+// 	struct list_elem page_list_elem;
+// };
 
 #include "threads/thread.h"
 void supplemental_page_table_init (struct supplemental_page_table *spt);

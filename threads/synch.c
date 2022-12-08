@@ -181,6 +181,29 @@ lock_init (struct lock *lock) {
 	sema_init (&lock->semaphore, 1);
 }
 
+int
+donate_priority(struct thread *holder) {
+    ASSERT(holder != NULL);
+
+    struct thread *cur = NULL;
+    int old_priority = ORI_PRI_DEFAULT;
+
+    if(holder->ori_priority == ORI_PRI_DEFAULT) {
+        holder->ori_priority = holder->priority;        // holder   : 양도 전, 자신의 우선순위를 저장 (최초 lock 획득 시)
+    }
+    old_priority = holder->priority;                    // donator  : 양도 전, holder의 우선순위를 저장
+    holder->priority = thread_get_priority();           // 우선순위 양도 (현재 lock의 holder)
+
+    /* 우선순위 양도 (또 다른 lock을 얻기위해 대기하는 holder들) */
+    cur = holder;
+    while(cur->waiting_lock != NULL) {
+        cur = cur->waiting_lock->holder;
+        cur->priority = thread_get_priority();
+    }
+
+    return old_priority;
+}
+
 /* Acquires LOCK, sleeping until it becomes available if
    necessary.  The lock must not already be held by the current
    thread.
@@ -196,56 +219,33 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!lock_held_by_current_thread (lock));
 
     /* PROJECT 1 - Priority Scheduling */
-    if(!lock_try_acquire(lock)) {
-        struct thread *holder = NULL;
-        int old_priority = ORI_PRI_DEFAULT;
-        bool donate_flag = false;
-
+    struct thread *holder = NULL;
+    int old_priority = ORI_PRI_DEFAULT;
+    
+    if(lock->holder != NULL) {
         thread_current()->waiting_lock = lock;              // donator가 자신이 대기하는 lock을 멤버로 저장
         holder = lock->holder;
-
         if(holder->priority < thread_current()->priority) {
-            donate_flag = true;
-            if(holder->ori_priority == ORI_PRI_DEFAULT) {
-                holder->ori_priority = holder->priority;        // holder   : 양도 전, 자신의 우선순위를 저장 (최초 lock 획득 시)
-            }
-            old_priority = holder->priority;                    // donator  : 양도 전, holder의 우선순위를 저장
-            holder->priority = thread_get_priority();           // 우선순위 양도 (현재 lock의 holder)
-
-            /* 우선순위 양도 (또 다른 lock을 얻기위해 대기하는 holder들) */
-            struct thread *cur;
-            cur = holder;
-            while(cur->waiting_lock != NULL) {
-                cur = cur->waiting_lock->holder;
-                cur->priority = thread_get_priority();
-            }
+            old_priority = donate_priority(holder);
         }
-
-        sema_down (&lock->semaphore);
-
-        /**
-         * 이 주석 아래의 라인이 실행된다는 것은,
-         * donator가 semaphore->waiters의 Blocked thread 중 
-         * 가장 높은 우선순위를 가진 쓰레드였기 때문에,
-         * context switch가 발생하여 unblock되었다는 의미이다. */
-
-        /* 우선순위 복구 */
-        if(donate_flag) {
-            if(holder->holding_lock_count <= 0) {           // holder가 hold한 다른 lock이 더 이상 없는 경우
-                if(holder->ori_priority != ORI_PRI_DEFAULT) {
-                    holder->priority = holder->ori_priority;
-                }
-                holder->ori_priority = ORI_PRI_DEFAULT;
-            } else {                                        // holder가 hold한 다른 lock이 아직 존재하는 경우
-                holder->priority = old_priority;
-            }
-        }
-
-        lock->holder = thread_current ();
     }
-    // lock 획득에 성공. 해당 쓰레드가 hold한 lock의 수 증가
-    thread_current ()->holding_lock_count += 1;
+
+    sema_down(&lock->semaphore);
+
+    if(old_priority != ORI_PRI_DEFAULT) {
+        if(holder->holding_lock_count <= 0) {               // holder가 hold한 다른 lock이 더 이상 없는 경우
+            if(holder->ori_priority != ORI_PRI_DEFAULT) {
+                holder->priority = holder->ori_priority;
+            }
+            holder->ori_priority = ORI_PRI_DEFAULT;
+        } else {                                            // holder가 hold한 다른 lock이 아직 존재하는 경우
+            holder->priority = old_priority;
+        }
+    }
+    lock->holder = thread_current();
+    thread_current()->holding_lock_count += 1;             // lock 획득에 성공. 해당 쓰레드가 hold한 lock의 수 증가
 }
+
 
 /* Tries to acquires LOCK and returns true if successful or false
    on failure.  The lock must not already be held by the current

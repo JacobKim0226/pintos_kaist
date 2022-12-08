@@ -12,6 +12,7 @@
 #include "filesys/file.h"
 #include "threads/palloc.h"
 #include "lib/user/syscall.h"
+#include "vm/vm.h"
 
 #include <stdlib.h>
 
@@ -27,6 +28,9 @@ tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED);
 void remove_file_from_fdt(int fd);
 void close_handler_usefd(int fd);
+bool is_writable;
+void check_valid_buffer(void *buffer, unsigned size, struct intr_frame *f, bool is_writable);
+
 /* System call.
  *
  * Previously system call services was handled by the interrupt handler
@@ -227,7 +231,7 @@ void open_handler(struct intr_frame *f) {
         return F_RAX;
     }
     int fd = add_file_to_fd_table(file_obj);
-
+     
     if (fd == -1){
         lock_acquire(&filesys_lock);
         file_close(file_obj);
@@ -249,10 +253,16 @@ void read_handler(struct intr_frame *f) {
     int fd = F_ARG1;
     void *buffer = F_ARG2;
     unsigned size = F_ARG3;
+    struct file *fileobj = fd_to_struct_file(fd);
+    struct page *page;
+
+    // check_valid_buffer(buffer,size,f,0);
+    // if(buffer ==NULL || !(is_user_vaddr(buffer))){
+    //     kern_exit(f,-1);
+    // } 
     address_check(f,buffer);
     address_check(f,buffer+size-1);
     int read_count;
-    struct file *fileobj = fd_to_struct_file(fd);
 
     if (fileobj ==NULL){
         F_RAX = -1;
@@ -367,8 +377,44 @@ void umount_handler(struct intr_frame *f) {
 
 bool
 address_check(struct intr_frame *f, char *ptr) {
-    if(!(is_user_vaddr(ptr)) || pml4_get_page(thread_current() -> pml4, ptr) == NULL) kern_exit(f,-1);
+    // struct thread *curr = thread_current();
+    // if(spt_find_page(&curr->spt,ptr)->va == ptr){
+    //     return;
+    // }
+    // if(ptr ==NULL || !(is_user_vaddr(ptr)) || spt_find_page(&thread_current()->spt,ptr) == NULL){
+    //     kern_exit(f,-1);
+    // } 
+    if(ptr ==NULL || !(is_user_vaddr(ptr)) || pml4_get_page(thread_current() -> pml4, ptr) == NULL){
+        // printf("address_check 안으로 들어옵니다\n\n\n");
+        kern_exit(f,-1);
+    } 
+        
 }
+
+
+struct page *check_address(struct intr_frame *f, char *ptr) {
+    // struct thread *curr = thread_current();
+    // if(spt_find_page(&curr->spt,ptr)->va == ptr){
+    //     return;
+    // }
+    if(ptr ==NULL || !(is_user_vaddr(ptr))){
+        kern_exit(f,-1);
+    } 
+    return spt_find_page(&thread_current()->spt, ptr);
+}
+
+void check_valid_buffer(void *buffer, unsigned size, struct intr_frame *f, bool is_writable){
+    for(int i=0; i < size; i++){
+        struct page *page = check_address(f,buffer+i);
+
+        if(page ==NULL)
+            kern_exit(f,-1);
+    
+        if(is_writable == true && &page->writable ==false)
+            kern_exit(f,-1);
+    }
+}
+
 
 int add_file_to_fd_table(struct file *file){
     int fd = 2;   // fd의 값은 2부터 출발

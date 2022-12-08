@@ -122,6 +122,12 @@ page_fault (struct intr_frame *f) {
 	bool write;        /* True: access was write, false: access was read. */
 	bool user;         /* True: access by user, false: access by kernel. */
 	void *fault_addr;  /* Fault address. */
+	/* 위의 설명
+	 * not_present = true -> physical page가 없어서 page fault가 일어난것
+	 * not_present = false -> 접근한 메모리의 physical page가 존재하지만, page fault가 일어났으므로 
+	 * 						  소거법에 의해 read-only page에 write를 한경우가 된다
+	 * not_present = false -> write = true가 성립되지만,
+	 * not_present = true -> write = true or false 가 될 수 있다 */
 
 	/* Obtain faulting address, the virtual address that was
 	   accessed to cause the fault.  It may point to code or to
@@ -139,6 +145,7 @@ page_fault (struct intr_frame *f) {
 	not_present = (f->error_code & PF_P) == 0;
 	write = (f->error_code & PF_W) != 0;
 	user = (f->error_code & PF_U) != 0;
+	// printf(" PF addr =  %p   --------\n", fault_addr);
 
 #ifdef VM
 	/* For project 3 and later. */
@@ -146,6 +153,7 @@ page_fault (struct intr_frame *f) {
 		return;
 #endif
 	if(user){
+		// printf("user일 경우에 들어오는 것 같은데\n");
 		kern_exit(f,-1);
 	}
 	
@@ -153,7 +161,6 @@ page_fault (struct intr_frame *f) {
 
 	/* Count page faults. */
 	page_fault_cnt++;
-
 	/* If the fault is true fault, show info and exit. */
 	printf ("Page fault at %p: %s error %s page in %s context.\n",
 			fault_addr,

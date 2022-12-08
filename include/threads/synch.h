@@ -41,6 +41,7 @@ void cond_broadcast (struct condition *, struct lock *);
 /* PROJECT 1 - Priority Scheduling */
 bool sema_compare(const struct list_elem *a, const struct list_elem *b, void *aux);
 struct semaphore *sema_pop_max(struct list *);
+int donate_priority(struct thread *holder);
 
 /* Optimization barrier.
  *

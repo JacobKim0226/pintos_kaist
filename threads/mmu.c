@@ -209,7 +209,10 @@ pml4_activate (uint64_t *pml4) {
 /* Looks up the physical address that corresponds to user virtual
  * address UADDR in pml4.  Returns the kernel virtual address
  * corresponding to that physical address, or a null pointer if
- * UADDR is unmapped. */
+ * UADDR is unmapped. 
+ * pml4에서 사용자 가상 주소에 해당하는 물리적 주소를 찾습니다
+ * 해당 물리적 주소에 해당하는 커널 가상 주소를 반환하거나
+ * 사용자 주소가 매핑되지 않을 경우 Null pointer를 반환 */
 void *
 pml4_get_page (uint64_t *pml4, const void *uaddr) {
 	ASSERT (is_user_vaddr (uaddr));
@@ -228,7 +231,13 @@ pml4_get_page (uint64_t *pml4, const void *uaddr) {
  * If WRITABLE is true, the new page is read/write;
  * otherwise it is read-only.
  * Returns true if successful, false if memory allocation
- * failed. */
+ * failed. 
+ * 사용자 가상 페이지에서 커널 가상 주소로 식별되는 물리적 프레임으로 페이지 맵 레벨 4의 매핑을 추가합니다.
+ * 사용자 페이지가 이미 매핑되어 있지 않아야 합니다. 커널 페이지는 user pool에서 palloc_get_page()함수로 
+ * 얻어진 페이지여야 합니다. 만약 writeble이 참이면 새 페이지는 읽기/쓰기가 가능합니다
+ * 다른 경우에는 read만 가능합니다.
+ * 성공적이라면 true를 반환하고, memory 할당을 실패할 경우 false를 반환한다.
+ * */
 bool
 pml4_set_page (uint64_t *pml4, void *upage, void *kpage, bool rw) {
 	ASSERT (pg_ofs (upage) == 0);

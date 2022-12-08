@@ -293,7 +293,7 @@ thread_current (void) {
 
 	return t;
 }
-
+                  
 /* Returns the running thread's tid. */
 tid_t
 thread_tid (void) {
