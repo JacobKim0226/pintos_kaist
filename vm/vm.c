@@ -6,6 +6,7 @@
 #include "vm/uninit.h"
 #include "kernel/hash.h"
 #include "include/threads/mmu.h"
+#include "userprog/process.h"
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
 void
@@ -48,7 +49,6 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 
 	ASSERT (VM_TYPE(type) != VM_UNINIT)
 	struct supplemental_page_table *spt = &thread_current ()->spt;
-	// printf("%p  이게 upage 주소입니다\n",upage);
 	
 	/* Check wheter the upage is already occupied or not. */
 	if (spt_find_page(spt,upage)== NULL) {
@@ -76,14 +76,6 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		page->writable = writable;
 		spt_insert_page(spt,page);
 		return true;
-
-		// if(spt_insert_page(spt,page)==NULL){
-		// 	goto err;
-		// }
-		// else{
-		// 	return true;
-		// }
-
 	}
 err:
 	// printf("이번 내리실 역은 vm_alloc_page_with_iniaiaiaiai eeerrrooor\n");
@@ -223,6 +215,20 @@ vm_get_frame (void) {
 /* Growing the stack. */
 static void
 vm_stack_growth (void *addr UNUSED) {
+	/* stack growth를 구현해야하는 이유 
+	 * userprog에서의 stack은 | USER_STACK 에서 시작하는 단일 페이지
+	 * 프로그램의 크기는 4KB 로 제한이었지만 --> 스택이 현재 크기를 추과하면 필요에 따라 페이지 할당
+	 * 1. 추가 페이지는 스택에 접근하는 경우에만 할당
+	 * 2. 스택에 접근하는 경우와 아닌경우 구별하여 구현
+	 * 3. userprogram의 스택 포인터의 현재 값을 얻을 수 있어야함
+	 * 4. struct intr_frame구조체의 멤버 rsp를 통해 알 수 있다
+	 * 5. 커널에서의 page fault가 일어날 때도 처리*/
+	if(vm_alloc_page(VM_ANON | VM_MARKER_0, addr, 1)){
+		vm_claim_page(addr);
+		thread_current()->stack_bottom -= PGSIZE;
+	}
+
+
 }
 
 /* Handle the fault on write_protected page */
@@ -235,23 +241,39 @@ bool
 vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
 	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
-	// !! free 중요
 	/* 인풋으로 들어온 fault address와 똑같은 페이지가 있는지 확인한다*/
 	struct page *page = NULL;
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
 	struct hash_elem hash_elem_fault;
 
-	if(spt_find_page(spt,addr)==NULL){
-		// printf("spt == null 로 빠졌을 경우\n");
-		return;
+	/* 유저쪽의 주소여야 한다 */
+	if(is_kernel_vaddr(addr)){
+		return false;
 	}
-	else{
-		page = spt_find_page(spt,addr);
-		// printf("vm_try_handle_fault에서 page->va  =  %p\n",page->va);
-		return vm_do_claim_page (page);
+	void *rsp_stack = is_kernel_vaddr(f->rsp) ? thread_current()->stack_rsp : f->rsp;
+
+
+	if(not_present){
+
+		if(spt_find_page(spt,addr)==NULL){
+			if(rsp_stack - 8 <= addr && USER_STACK - 0x100000 <= addr && addr <= USER_STACK){
+				vm_stack_growth(thread_current()->stack_bottom - PGSIZE);
+				return true;
+			}
+			return false;		
+		}
+		else{
+			page = spt_find_page(spt,addr);
+			return vm_do_claim_page (page);
+			// return true;
+		}
+
 	}
-	// struct hash_elem *fault_hash_elem;
+	return false;
+
+
+
 }
 
 
@@ -268,7 +290,7 @@ vm_dealloc_page (struct page *page) {
 bool
 vm_claim_page (void *va UNUSED) {
 	struct page *page = NULL;
-	printf("vm_cliam_page 으로 들어와서 무언가를 수정해야하나\n");
+	// printf("vm_cliam_page 으로 들어와서 무언가를 수정해야하나\n");
 	/* TODO: Fill this function */
 	page = spt_find_page(&thread_current()->spt,va);
 	if (page == NULL){
@@ -296,12 +318,11 @@ vm_do_claim_page (struct page *page) {
 	// printf_hash(&thread_current()->spt);	
 	// printf("page -> va : %X\n", page->va);
 	// printf("page -> frame ->kva : %p\n", frame->kva); 
-
 	// printf("네가 원하는 것이 do_claim_page 인것이냐?? 마구니가 꼈구나\n");
 	// printf("page->va 값을 알고 싶다  %p\n",page->va);
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
 	/* 페이지 테이블 엔트리를 삽입해라,, 페이지의 가상주소를 프레임의 물리주소에 매핑시켜주기위해 */
-	if(pml4_set_page(curr->pml4,page->va,frame->kva,true)){
+	if(pml4_set_page(curr->pml4,page->va,frame->kva,page->writable)){
 		// printf("page -> va : %X\n", page->va);
 		// printf("page -> frame ->kva : %X\n", page->frame->kva); 
 		// printf_hash(&thread_current()->spt);	
@@ -310,6 +331,7 @@ vm_do_claim_page (struct page *page) {
 		// return true;
 	}
 	else{
+		PANIC("fail pml4 set page !!!!!!!!");
 		return false;
 	}
 		
@@ -328,14 +350,99 @@ supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
 bool
 supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 		struct supplemental_page_table *src UNUSED) {
-			
+	/* src의 spt를 dst로 복사해준다. 
+	 * 부모 쓰레드의 spt에 있는 page들을 다 돌아서 복사해줘야한다
+	 * 기존에 spt테이블에 썼던것 처럼 uninit 페이지를 할당해주어야 한다
+	 * copy that*/
+	struct hash *src_hash = &src->hash;
+	struct hash *dst_hash = &dst->hash;  
+	struct hash_iterator i;
+	hash_first(&i,src_hash);
+	while(hash_next(&i)){
+		struct page *src_page = hash_entry(hash_cur(&i),struct page, hash_elem);
+		enum vm_type src_type = page_get_type(src_page);	//src_page의 type을 불러온다. 즉, 부모의 페이지 타입을 불러온다
+		void *src_page_va = src_page->va;				// src_page의 가상주소. 즉, 부모 페이지의 가상주소
+		bool src_writable = src_page->writable;
+		vm_initializer *src_init = src_page->uninit.init;		// src_page의 uninit의 init 은 lazy_load_segment 이다.
+		// struct send_data_via *aux = (struct send_data_via *)malloc(sizeof(struct send_data_via)); 
+		// struct send_data_via *src_aux = (struct send_data_via *)src_page->uninit.aux;
+		void *aux = src_page->uninit.aux;
+		// printf("copy에 들어오나요?? \n");
+		// if(aux ==NULL){
+		// 	return false;
+		// }
+		// if(src_aux != NULL){
+		// 	aux->file = src_aux->file;
+		// 	aux->position = src_aux->position;
+		// 	aux->page_read_bytes = src_aux->page_read_bytes;
+		// 	aux->page_zero_bytes = src_aux->page_zero_bytes;
+		// }	
+		if(src_page->uninit.type & VM_MARKER_0){
+			setup_stack(&thread_current()->tf);
+		}
+
+		else if(src_page->operations->type == VM_UNINIT){
+			if(!vm_alloc_page_with_initializer(src_type,src_page_va,src_writable,src_init,aux)){
+				return false;
+			}			
+		}
+		else{
+			if(!vm_alloc_page(src_type,src_page_va,src_writable)){
+				return false;
+			}
+			if(!vm_claim_page(src_page_va)){
+				return false;
+			}
+		}
+
+
+		if(src_page->operations->type != VM_UNINIT){
+			struct page *dst_page = spt_find_page(dst,src_page_va);
+			// if(dst_page == NULL){
+			// 	return false;
+			// }
+			memcpy(dst_page->frame->kva,src_page->frame->kva,PGSIZE);
+		}
+	
+		// printf("copy안에 들어오는지 확인해봅니다\n");
+
+		// struct page *src_page = hash_entry(hash_cur(&i), struct page, hash_elem);
+		// vm_initializer *init = NULL;
+
+
+		// switch (VM_TYPE(src_page->uninit.type))
+		// {
+		// case VM_UNINIT:
+		// 	init = src_page->uninit.init;
+		// 	struct send_data_via *send_aux = (struct send_data_via *)malloc(sizeof(struct send_data_via));
+		// 	memcpy(send_aux,src_page->uninit.aux,sizeof(struct send_data_via));
+		// 	if(!vm_alloc_page_with_initializer(src_page->uninit.type,src_page->va,src_page->writable,init,send_aux)){
+		// 		return false;
+		// 	}
+		// 	break;
+		// case VM_ANON:
+		
+		// 	vm_alloc_page(VM_ANON,src_page->va,true);
+		// 	vm_claim_page(src_page->va);
+		// 	struct page *dst_page = spt_find_page(dst,src_page->va);
+		// 	memcpy(dst_page->frame->kva,src_page->frame->kva,PGSIZE);
+		// }
+		// 	break;
+		
+		}
+	
+	return true;
 }
+
+	
+
 
 /* Free the resource hold by the supplemental page table */
 void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+	hash_destroy(&spt->hash,spt_free_destroy);
 }
 
 void

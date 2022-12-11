@@ -30,6 +30,8 @@ void remove_file_from_fdt(int fd);
 void close_handler_usefd(int fd);
 bool is_writable;
 void check_valid_buffer(void *buffer, unsigned size, struct intr_frame *f, bool is_writable);
+void kernel_writable_check(struct intr_frame *f, void *addr);
+struct page *check_address(struct intr_frame *f, char *ptr);
 
 /* System call.
  *
@@ -137,7 +139,7 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
-    
+    thread_current()->stack_rsp = f->rsp;
     struct system_call call = syscall_list[F_RAX];
     if(call.syscall_num == F_RAX) {
         call.function(f);
@@ -167,7 +169,8 @@ void fork_handler(struct intr_frame *f) {
 
 void exec_handler(struct intr_frame *f) {
     char *file = F_ARG1;
-    address_check(f,file);
+    // address_check(f,file);
+    check_address(f, file);
     int size = strlen(file) + 1;
     char *fn_copy = palloc_get_page(PAL_ZERO);
     if (fn_copy == NULL){
@@ -191,7 +194,8 @@ void wait_handler(struct intr_frame *f) {
 void create_handler(struct intr_frame *f) {
     char *file = F_ARG1;
     unsigned initial_size = F_ARG2;
-    address_check(f,file);
+    // address_check(f,file);
+    check_address(f, file);
     if (file == NULL){
         kern_exit(f,-1);
     }
@@ -218,8 +222,10 @@ void remove_handler(struct intr_frame *f) {
 }
 
 void open_handler(struct intr_frame *f) {
+    // printf("open_handler에 들어왔어요\n");
     char *file = F_ARG1;
-    address_check(f,file);
+    // address_check(f,file);
+    check_address(f, file);
     lock_acquire(&filesys_lock);
     struct file *file_obj =filesys_open(file);
     if (strcmp(thread_current()->name,file)==0){
@@ -250,18 +256,16 @@ void filesize_handler(struct intr_frame *f) {
 }
 
 void read_handler(struct intr_frame *f) {
+    // printf("read_handler에 들어왔어요\n");
     int fd = F_ARG1;
     void *buffer = F_ARG2;
     unsigned size = F_ARG3;
     struct file *fileobj = fd_to_struct_file(fd);
     struct page *page;
-
-    // check_valid_buffer(buffer,size,f,0);
-    // if(buffer ==NULL || !(is_user_vaddr(buffer))){
-    //     kern_exit(f,-1);
-    // } 
-    address_check(f,buffer);
-    address_check(f,buffer+size-1);
+    check_valid_buffer(buffer, size, f, 0);
+    kernel_writable_check(f,buffer);
+    // address_check(f,buffer); check_valid_buffer(void *buffer, unsigned size, struct intr_frame *f, bool is_writable)
+    // address_check(f,buffer+size-1);
     int read_count;
 
     if (fileobj ==NULL){
@@ -282,7 +286,9 @@ void write_handler(struct intr_frame *f) {
     int fd = (int)F_ARG1;
     char *buffer =(char *) F_ARG2;
     unsigned size = F_ARG3;
-    address_check(f,buffer);
+    check_valid_buffer(buffer, size, f, 0);
+
+    // address_check(f,buffer);
     struct file *fileobj = fd_to_struct_file(fd);
     int read_count;
 
@@ -319,7 +325,8 @@ void tell_handler(struct intr_frame *f) {
         return;
     }
     struct file *fileobj = fd_to_struct_file(fd);
-    address_check(f,fileobj);
+    // address_check(f,fileobj);
+    check_address(f, fileobj);
     F_RAX = file_tell(fileobj);
 }
 
@@ -381,9 +388,13 @@ address_check(struct intr_frame *f, char *ptr) {
     // if(spt_find_page(&curr->spt,ptr)->va == ptr){
     //     return;
     // }
-    // if(ptr ==NULL || !(is_user_vaddr(ptr)) || spt_find_page(&thread_current()->spt,ptr) == NULL){
+    // if(ptr ==NULL || !(is_user_vaddr(ptr))){
     //     kern_exit(f,-1);
     // } 
+    // if(spt_find_page(&thread_current()->spt,ptr) == NULL){
+    //     kern_exit(f,-1);
+    // }
+
     if(ptr ==NULL || !(is_user_vaddr(ptr)) || pml4_get_page(thread_current() -> pml4, ptr) == NULL){
         // printf("address_check 안으로 들어옵니다\n\n\n");
         kern_exit(f,-1);
@@ -393,14 +404,15 @@ address_check(struct intr_frame *f, char *ptr) {
 
 
 struct page *check_address(struct intr_frame *f, char *ptr) {
-    // struct thread *curr = thread_current();
-    // if(spt_find_page(&curr->spt,ptr)->va == ptr){
-    //     return;
-    // }
-    if(ptr ==NULL || !(is_user_vaddr(ptr))){
+    struct thread *curr = thread_current();
+    if(is_kernel_vaddr(ptr) || ptr == NULL || !spt_find_page(&curr->spt, ptr) || !(&curr->pml4)){
         kern_exit(f,-1);
     } 
-    return spt_find_page(&thread_current()->spt, ptr);
+    return spt_find_page(&curr->spt, ptr);
+    // if(ptr ==NULL || !(is_user_vaddr(ptr))){
+    //     kern_exit(f,-1);
+    // } 
+    // return spt_find_page(&thread_current()->spt, ptr);
 }
 
 void check_valid_buffer(void *buffer, unsigned size, struct intr_frame *f, bool is_writable){
@@ -412,6 +424,11 @@ void check_valid_buffer(void *buffer, unsigned size, struct intr_frame *f, bool 
     
         if(is_writable == true && &page->writable ==false)
             kern_exit(f,-1);
+        #ifdef VM
+        if( thread_current()->pml4 == &page->frame){
+            kern_exit(f,-1);
+        }
+        #endif
     }
 }
 
@@ -464,4 +481,13 @@ void close_handler_usefd(int fd) {
 	file_close(close_file);
 	lock_release(&filesys_lock);
 	remove_file_from_fdt(fd);
+}
+
+
+void kernel_writable_check(struct intr_frame *f, void *addr){
+    void *find_va = pg_round_down(addr);
+    struct page *find_page = spt_find_page(&thread_current()->spt,find_va);
+    if (find_page->writable == false){
+        kern_exit(f,-1);
+    }
 }

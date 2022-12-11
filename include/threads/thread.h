@@ -115,6 +115,8 @@ struct thread {
 	struct semaphore fork_sema;		/* Project 2 User Programs */
 	struct semaphore wait_sema;		/* Project 2 User Programs */
 	struct semaphore free_sema;		/* Project 2 User Programs */
+	void *stack_rsp;				/* Project 3 Virtual Memory */
+	void *stack_bottom;				/* Project 3 Virtual Memory */
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */

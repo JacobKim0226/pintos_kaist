@@ -100,7 +100,7 @@ struct supplemental_page_table {
 	// 2. 이에 상응하는 커널 가상주소를 가리키는 포인터 정보
 	// 3. active인지 inactive인지 판별하는 정보
 	bool success;
-	struct hash hash;  // Page들의 리스트 선언
+	struct hash hash;  // hash구조체 선언
 	
 };
 

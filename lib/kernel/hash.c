@@ -406,3 +406,9 @@ bool page_less(const struct hash_elem *a_, const struct hash_elem *b_, void *aux
 	return a->va < b->va;
 }
 
+void spt_free_destroy(struct hash_elem *free_hash_elem, void *aux){
+	const struct page *free_page = hash_entry(free_hash_elem,struct page, hash_elem);
+	free(free_page);
+	// free(free_page->frame->kva);
+}
+

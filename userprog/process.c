@@ -69,7 +69,6 @@ static void initd(void *f_name) {
 
     process_init();
     if (process_exec(f_name) < 0) PANIC("Fail to launch initd\n");
-    printf("프로세스 exec은 통과\n");
     NOT_REACHED();
 }
 
@@ -232,6 +231,12 @@ int process_exec(void *f_name) {
 
     /* We first kill the current context */
     process_cleanup();
+
+    /* process_exec를 호출하면 위의 process_cleanup으로 인해 삭제되므로
+     * 삭제된 spt를 다시 initialize 해주어야 한다. */
+    #ifdef VM
+        supplemental_page_table_init(&thread_current()->spt);
+    #endif
     /* And then load the binary */
     // lock_acquire(&filesys_lock);
     success = load(file_name, &_if);
@@ -392,7 +397,6 @@ struct ELF64_PHDR {
 #define ELF ELF64_hdr
 #define Phdr ELF64_PHDR
 
-static bool setup_stack(struct intr_frame *if_);
 static bool validate_segment(const struct Phdr *, struct file *);
 static bool load_segment(struct file *file, off_t ofs, uint8_t *upage, uint32_t read_bytes, uint32_t zero_bytes, bool writable);
 
@@ -710,7 +714,6 @@ static bool lazy_load_segment(struct page *page, void *aux) {
     /* TODO: VA is available when calling this function. */
     // printf("이번 내리실 역은 lazy_load_segment 위위위위 입니다\n");
 	struct send_data_via * aux_info = (struct send_data_via*) aux;
-
     struct file *file = aux_info->file;
     off_t pos = aux_info->position;
     size_t page_read_bytes = aux_info->page_read_bytes;
@@ -727,12 +730,12 @@ static bool lazy_load_segment(struct page *page, void *aux) {
     // printf("file_read 양  %d\n",file_read(aux_info->file, page->frame->kva, page_read_bytes));
     // printf("page_read_bytes %d\n",page_read_bytes);
 
-    if (file_read(file, page->va, page_read_bytes) != page_read_bytes) {
+    if (file_read(file, page->frame->kva, page_read_bytes) != page_read_bytes) {
         // printf("읽은 값 : %u //// 읽어야하는값 : %u\n", tmp, page_read_bytes);
         palloc_free_page(page);
         return false;
     }
-    memset(page->va + page_read_bytes, 0, page_zero_bytes);
+    memset(page->frame->kva + page_read_bytes, 0, page_zero_bytes);
 
     // printf("이번 내리실 역은 lazy_load_segment 입니다\n");
     return true;
@@ -802,18 +805,27 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage, uint32_t 
 }
 
 /* Create a PAGE of stack at the USER_STACK. Return true on success. */
-static bool setup_stack(struct intr_frame *if_) {
+bool setup_stack(struct intr_frame *if_) {
     uint8_t *kpage;
     bool success = false;
+    void *stack_bottom = (void *)(((uint8_t *)USER_STACK) - PGSIZE);
+    if(vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom,1)){
+        success = vm_claim_page(stack_bottom);
 
-    kpage = palloc_get_page(PAL_USER | PAL_ZERO);
-    if (kpage != NULL) {
-        success = install_page(((uint8_t *)USER_STACK) - PGSIZE, kpage, true);
-        if (success)
+        if(success){
             if_->rsp = USER_STACK;
-        else
-            palloc_free_page(kpage);
+            thread_current()->stack_bottom = stack_bottom;
+        }
     }
+
+    // kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+    // if (kpage != NULL) {
+    //     success = install_page(((uint8_t *)USER_STACK) - PGSIZE, kpage, true);
+    //     if (success)
+    //         if_->rsp = USER_STACK;
+    //     else
+    //         palloc_free_page(kpage);
+    // }
     return success;
 }
 #endif /* VM */
