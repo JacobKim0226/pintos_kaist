@@ -437,12 +437,22 @@ supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 	
 
 
-/* Free the resource hold by the supplemental page table */
+/* Free the resource hold by the supplemental page table 김지수 멍청이 */
 void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+	// struct hash_iterator i;
+	// hash_first(&i,&spt->hash);
+	// while(hash_next(&i)){
+	// 	struct page *kill_page = hash_entry(hash_cur(&i), struct page, hash_elem);
+	// 	if(kill_page->operations->type == VM_FILE){
+	// 		do_munmap(kill_page->va);
+	// 	}
+	// }
+		
 	hash_destroy(&spt->hash,spt_free_destroy);
+
 }
 
 void

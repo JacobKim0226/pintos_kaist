@@ -346,11 +346,65 @@ void close_handler(struct intr_frame *f) {
 }
 
 void mmap_handler(struct intr_frame *f) {
+    // printf("mmap_handler로 들어옵니댜\n");
+    void *addr = F_ARG1;
+    size_t length = F_ARG2;
+    int writable = F_ARG3;
+    int fd = F_ARG4;
+    off_t offset = F_ARG5;
 
+    struct file *file = fd_to_struct_file(fd);
+    // printf(" file  1 =   %X   \n",file);
+    if(file == NULL){
+        // printf(" file  2 =   %X   \n",file);
+        kern_exit(f,-1);
+        // F_RAX = NULL;
+    }
+    if(addr + length == 0){
+        F_RAX = NULL;
+        return F_RAX;
+    }
+
+    if(offset % PGSIZE !=0){
+        // printf(" file  3 =   %X   \n",file);
+        // kern_exit(f,-1);
+        F_RAX = NULL;
+        return F_RAX;
+    }
+
+    if(pg_round_down(addr) != addr || is_kernel_vaddr(addr)){
+        // printf(" file  4 =   %X   \n",file);
+        // kern_exit(f,-1);
+        F_RAX = NULL;
+        return F_RAX;
+    }
+    if(spt_find_page(&thread_current()->spt,addr)){
+        // printf(" file  5 =   %X   \n",file);
+        // kern_exit(f,-1);
+        F_RAX = NULL;
+        return F_RAX;
+    }
+
+    if(addr == NULL || (long long)length ==0){
+        // printf(" file  6 =   %X   \n",file);
+        // kern_exit(f,-1);
+        F_RAX = NULL;
+        return F_RAX;
+    }
+
+    if(fd == STDIN_FILENO || fd == STDOUT_FILENO){
+        // printf(" file  7 =   %X   \n",file);
+        kern_exit(f,-1);
+    }
+    // printf(" file  8 =   %X   \n",file);
+    void *ret = do_mmap(addr,length,writable,file, offset);
+    // printf(" file  9 =   %X   \n",file);
+    F_RAX = ret;
 }
 
 void mnumap_handler(struct intr_frame *f) {
-
+    void *addr = F_ARG1;
+    do_munmap(addr);
 }
 
 void chdir_handler(struct intr_frame *f) {
