@@ -189,6 +189,7 @@ void exec_handler(struct intr_frame *f) {
 void wait_handler(struct intr_frame *f) {
     pid_t pid = F_ARG1;
     F_RAX = process_wait(pid);
+    return;
 }
 
 void create_handler(struct intr_frame *f) {

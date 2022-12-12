@@ -9,6 +9,10 @@
 #include "userprog/process.h"
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
+
+struct list frame_table;
+struct list_elem *start;
+
 void
 vm_init (void) {
 	vm_anon_init ();
@@ -19,6 +23,9 @@ vm_init (void) {
 	register_inspect_intr ();
 	/* DO NOT MODIFY UPPER LINES. */
 	/* TODO: Your code goes here. */
+
+	list_init(&frame_table);
+	start = list_begin(&frame_table);
 }
 
 /* Get the type of the page. This function is useful if you want to know the
@@ -103,6 +110,7 @@ spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
 	hash_find_elem = hash_find(&spt->hash, &page->hash_elem);
 	free(page);
 	if (hash_find_elem ==NULL){
+		// printf("find == nULL \n\n");
 		return NULL;
 	}
 	else{
@@ -130,16 +138,18 @@ spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
 bool
 spt_insert_page (struct supplemental_page_table *spt UNUSED,
 		struct page *page UNUSED) {
-	int succ = false;
+	// int succ = false;
 	/* TODO: Fill this function. */
 	// printf("spt_insert_page가 되고 있어요\n");
 	// struct hash_elem *insert_elem = &page->hash_elem;
-	if (!hash_insert(&spt->hash, &page->hash_elem)){
-		succ = true;
-		return succ;
+	if (hash_insert(&spt->hash, &page->hash_elem) == NULL){
+		// printf("insert true\n");
+		// succ = true;
+		return true;
 	}
 	else{
-		return succ;
+		// printf("insert false\n");
+		return false;
 	}
 
 
@@ -165,7 +175,28 @@ static struct frame *
 vm_get_victim (void) {
 	struct frame *victim = NULL;
 	 /* TODO: The policy for eviction is up to you. */
+	 struct thread *curr = thread_current();
+	 struct list_elem *e =start;
 
+	for(start = e; start != list_end(&frame_table);start=list_next(start)){
+		victim = list_entry(start, struct frame, frame_elem);
+		if(pml4_is_accessed(curr->pml4,victim->page->va)){
+			pml4_set_accessed(curr->pml4, victim->page->va,0);
+		}
+		else{
+			return victim;
+		}
+	}
+
+	 for(start = list_begin(&frame_table); start != e; start = list_next(start)){
+		victim = list_entry(start, struct frame, frame_elem);
+		if(pml4_is_accessed(curr->pml4,victim->page->va)){
+			pml4_set_accessed(curr->pml4,victim->page->va,0);
+		}
+		else{
+			return victim;
+		}
+	 }
 	return victim;
 }
 
@@ -175,8 +206,11 @@ static struct frame *
 vm_evict_frame (void) {
 	struct frame *victim UNUSED = vm_get_victim ();
 	/* TODO: swap out the victim and return the evicted frame. */
+	if(victim !=NULL){
+		swap_out(victim->page);
+	}
 
-	return NULL;
+	return victim;
 }
 
 /* palloc() and get frame. If there is no available page, evict the page
@@ -190,15 +224,23 @@ vm_get_frame (void) {
 	/* TODO: Fill this function. */
 	// struct frame *new_frame = palloc_get_page(PAL_USER);
 
-	frame->page=NULL;
 	frame->kva = palloc_get_page(PAL_USER | PAL_ZERO);
 	// printf("kva 주소값 %p\n", frame->kva);
 	/* user pool memory가 꽉찼을 때  frame을 하나 swap으로 보내주고, disk에서 그만큼의 메모리를 가져와
 	   frame에 가져온다 우선 PANIC("todo")로 구현*/
 	// PANIC("todo");
-	if (frame == NULL || frame->kva == NULL){
-		PANIC("todo");
+	// if (frame == NULL || frame->kva == NULL){
+	// 	PANIC("todo");
+	// }
+	if(frame->kva == NULL){
+		frame = vm_evict_frame();
+		frame->page = NULL;
+		return frame;
 	}
+
+	list_push_back(&frame_table,&frame->frame_elem);
+
+	frame->page=NULL;
 
 	ASSERT (frame != NULL);
 	ASSERT (frame->page == NULL);
@@ -255,7 +297,6 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 
 
 	if(not_present){
-
 		if(spt_find_page(spt,addr)==NULL){
 			if(rsp_stack - 8 <= addr && USER_STACK - 0x100000 <= addr && addr <= USER_STACK){
 				vm_stack_growth(thread_current()->stack_bottom - PGSIZE);
@@ -294,6 +335,7 @@ vm_claim_page (void *va UNUSED) {
 	/* TODO: Fill this function */
 	page = spt_find_page(&thread_current()->spt,va);
 	if (page == NULL){
+		// printf("get frame false\n\n");
 		return false;
 	}
 

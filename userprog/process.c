@@ -82,7 +82,6 @@ tid_t process_fork(const char *name, struct intr_frame *if_ UNUSED) {
 
     tid_t pid = thread_create(name, PRI_DEFAULT, __do_fork, parent);
     if (pid == TID_ERROR) {
-        // sema_down(&child->fork_sema);
         return TID_ERROR;
     }
     struct thread *child = get_child(pid);
@@ -186,20 +185,21 @@ static void __do_fork(void *aux) {
     }
     current->fdidx = parent->fdidx;
     if_.R.rax = 0;
-    sema_up(&current->fork_sema);
+    // sema_up(&current->fork_sema);
     process_init();
     // printf("너 여기 들어 오기는 하냐? 맞을래?\n");
     /* Finally, switch to the newly created process. */
     if (succ) {
+        do_iret(&if_);
     }
-    do_iret(&if_);
 error:
-    // printf("너 설마 여기도 들어오니? 오면 넌 끝났다\n");
-    current->process_status = TID_ERROR;
-    sema_up(&current->fork_sema);
-    if_.R.rdi = TID_ERROR;
+    printf("너 설마 여기도 들어오니? 오면 넌 끝났다\n");
+    // current->process_status = TID_ERROR;
+    // sema_up(&current->fork_sema);
+    // if_.R.rdi = TID_ERROR;
     // exit_handler(&if_);
-    thread_exit();
+    // thread_exit();
+    kern_exit(&if_,-1);
 }
 
 /* child list를 순회하며 찾은 뒤 해당 자식 스레드를 반환
@@ -269,19 +269,22 @@ int process_wait(tid_t child_tid UNUSED) {
     struct thread *curr = thread_current();
     struct thread *child = get_child(child_tid);
     if (child == NULL) {
+        printf("process_wait에 들어옵니다  NNNUUULLLLLLL\n");
         return -1;
     }
-    if (child->is_waited) {
-        return -1;
-    } else {
-        child->is_waited = true;
-    }
+    // if (child->is_waited) {
+    //     return -1;
+    // } else {
+    //     child->is_waited = true;
+    // }
     sema_down(&child->wait_sema);
-    int process_status = child->process_status;
     list_remove(&child->child_elem);
     sema_up(&child->free_sema);
     // printf("%d --------------------------------------------------------\n",child->process_status);
-    return process_status;
+    // int process_status = child->process_status;
+    // return process_status;
+    printf("process_wait에 들어옵니다\n");
+    return child->process_status;
 
     // thread_set_priority(thread_get_priority()-1);
 
@@ -304,7 +307,7 @@ void process_exit(void) {
     process_cleanup();
 
     sema_up(&curr->wait_sema);
-    // sema_up(&curr->fork_sema);
+    sema_up(&curr->fork_sema);
     sema_down(&curr->free_sema);
 }
 
